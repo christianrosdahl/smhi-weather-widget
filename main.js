@@ -297,7 +297,7 @@ function createWeatherChart(forecasts, width, height, lat, lon) {
       emojiRowY,
       colWidth,
       emojiRowH,
-      Font.systemFont(42),
+      Font.systemFont(55),
       defaultColor(true),
     );
 
