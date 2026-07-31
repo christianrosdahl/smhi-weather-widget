@@ -25,6 +25,36 @@ const CHART_RIGHT_AXIS_WIDTH = 68;
 const ASSUMED_WIDGET_CONTENT_WIDTH = 323;
 
 // ==========================================
+// CACHE HELPERS
+// ==========================================
+const cachePath = FileManager.local().joinPath(
+  FileManager.local().cacheDirectory(),
+  "smhi-chart-widget-cache.json",
+);
+
+function saveCache(data) {
+  try {
+    FileManager.local().writeString(cachePath, JSON.stringify(data));
+  } catch (e) {
+    console.error("Failed to save cache: " + e);
+  }
+}
+
+function loadCache() {
+  const fm = FileManager.local();
+  if (fm.fileExists(cachePath)) {
+    try {
+      const raw = fm.readString(cachePath);
+      return JSON.parse(raw);
+    } catch (e) {
+      console.error("Failed to read cache: " + e);
+      return null;
+    }
+  }
+  return null;
+}
+
+// ==========================================
 // RUN WIDGET
 // ==========================================
 const widget = await createWidget();
@@ -48,51 +78,75 @@ async function createWidget() {
     new Color("#000000"),
   );
 
-  // 1. Fetch GPS Location & City Name
   let lat = FALLBACK_LAT;
   let lon = FALLBACK_LON;
   let locationName = FALLBACK_NAME;
-
-  try {
-    const loc = await Location.current();
-    lat = loc.latitude;
-    lon = loc.longitude;
-    const placemarks = await Location.reverseGeocode(lat, lon);
-    if (placemarks && placemarks.length > 0) {
-      locationName =
-        placemarks[0].locality ||
-        placemarks[0].postalAddress?.city ||
-        locationName;
-    }
-  } catch (e) {
-    console.log("GPS fetch failed, using fallback location: " + e);
-  }
-
-  // 👉 MAKE WIDGET TAPPABLE (Opens SMHI forecast)
-  widget.url = `https://www.smhi.se/vader/prognoser-och-varningar/vaderprognos`;
-
-  // 2. Fetch SMHI API Data
-  const apiUrl = `https://opendata-download-metfcst.smhi.se/api/category/snow1g/version/1/geotype/point/lon/${lon.toFixed(4)}/lat/${lat.toFixed(4)}/data.json`;
-  let data;
+  let timeSeries = [];
   let fetchTimeStr = "";
 
   try {
-    const req = new Request(apiUrl);
-    data = await req.loadJSON();
-    fetchTimeStr = formatTime(new Date());
-  } catch (e) {
-    const errText = widget.addText("Failed to load SMHI data");
-    errText.textColor = Color.red();
-    errText.font = Font.boldSystemFont(12);
-    return widget;
-  }
+    // 1. Fetch GPS Location & City Name
+    try {
+      const loc = await Location.current();
+      lat = loc.latitude;
+      lon = loc.longitude;
+      const placemarks = await Location.reverseGeocode(lat, lon);
+      if (placemarks && placemarks.length > 0) {
+        locationName =
+          placemarks[0].locality ||
+          placemarks[0].postalAddress?.city ||
+          locationName;
+      }
+    } catch (e) {
+      console.log("GPS fetch failed, using fallback location: " + e);
+    }
 
-  const timeSeries = data?.timeSeries || [];
-  if (!Array.isArray(timeSeries) || timeSeries.length === 0) {
-    const errText = widget.addText("No forecast data available");
-    errText.textColor = Color.orange();
-    errText.font = Font.boldSystemFont(12);
-    return widget;
+    // 👉 MAKE WIDGET TAPPABLE (Opens SMHI forecast)
+    widget.url = `https://www.smhi.se/vader/prognoser-och-varningar/vaderprognos`;
+
+    // 2. Fetch SMHI API Data
+    const apiUrl = `https://opendata-download-metfcst.smhi.se/api/category/snow1g/version/1/geotype/point/lon/${lon.toFixed(4)}/lat/${lat.toFixed(4)}/data.json`;
+    const req = new Request(apiUrl);
+    const data = await req.loadJSON();
+
+    timeSeries = data?.timeSeries || [];
+    if (!Array.isArray(timeSeries) || timeSeries.length === 0) {
+      throw new Error("No timeSeries in SMHI response");
+    }
+
+    fetchTimeStr = formatTime(new Date());
+
+    // Save successful fetch to disk
+    saveCache({
+      lat,
+      lon,
+      locationName,
+      timeSeries,
+      fetchTimeStr,
+      url: widget.url,
+    });
+  } catch (e) {
+    console.error("Update failed, falling back to cache: " + e);
+    const cached = loadCache();
+
+    if (
+      cached &&
+      Array.isArray(cached.timeSeries) &&
+      cached.timeSeries.length > 0
+    ) {
+      lat = cached.lat || FALLBACK_LAT;
+      lon = cached.lon || FALLBACK_LON;
+      locationName = cached.locationName || FALLBACK_NAME;
+      timeSeries = cached.timeSeries;
+      fetchTimeStr = cached.fetchTimeStr || "Unknown";
+      if (cached.url) widget.url = cached.url;
+    } else {
+      // Only show error message if no cached data exists at all
+      const errText = widget.addText("Failed to load SMHI data");
+      errText.textColor = Color.red();
+      errText.font = Font.boldSystemFont(12);
+      return widget;
+    }
   }
 
   // 3. TITLE ROW
@@ -131,6 +185,13 @@ async function createWidget() {
   // onto ONE canvas using the same column-width math, so they line up
   // exactly no matter the widget's rendered size.
   const forecasts = getUpcomingHours(timeSeries, 16);
+
+  if (forecasts.length === 0) {
+    const errText = widget.addText("No upcoming forecast data");
+    errText.textColor = Color.orange();
+    errText.font = Font.boldSystemFont(12);
+    return widget;
+  }
 
   const chartStack = widget.addStack();
   chartStack.layoutHorizontally();
