@@ -242,9 +242,6 @@ function createWeatherChart(forecasts, width, height, lat, lon) {
   const textBlockBottom = windRowY + windRowH;
 
   // --- Draw separate permanent white backdrops ---
-  // In Light Mode (white widget background), these cards are invisible.
-  // In Dark Mode (black widget background), they create clean white
-  // rounded bars behind the hour row and the combined temp+wind rows.
   ctx.setFillColor(new Color("#FFFFFF"));
 
   // 1. White backdrop behind the HOURS row
@@ -317,7 +314,7 @@ function createWeatherChart(forecasts, width, height, lat, lon) {
       defaultColor(true),
     );
 
-    // Wind: direction arrow (points where the wind is blowing TO) + speed
+    // Wind: direction arrow + speed
     const windSpeed = getValue(item, "wind_speed", "ws");
     const windDirection = getValue(item, "wind_from_direction", "wd");
     const windArrow = getWindArrow(windDirection);
@@ -346,14 +343,10 @@ function createWeatherChart(forecasts, width, height, lat, lon) {
     if (pmax > maxRain) maxRain = pmax;
   }
 
-  // 1. Draw horizontal grid lines (spanning the chart area only) with
-  //    a left axis for probability (%) and a right axis for precipitation (mm).
-  //    Both axes share the same 0 / 0.5 / 1 gridlines, so they line up exactly.
+  // 1. Draw horizontal grid lines (spanning the chart area only)
   const gridColor = new Color("#8E8E93", 0.25);
-  const axisLabelFont = Font.systemFont(24);
+  const axisLabelFont = Font.systemFont(25);
   const probAxisColor = new Color("#FF9500", 0.95);
-
-  // Vibrant medium-cobalt blue with high visibility on both white and black backgrounds
   const precipAxisColor = new Color("#0A78EB", 1.0);
 
   [0, 0.5, 1].forEach((level) => {
@@ -368,13 +361,15 @@ function createWeatherChart(forecasts, width, height, lat, lon) {
     ctx.strokePath();
 
     // Left axis: probability of precipitation (%)
+    // We start at x = -20 and add 20 to the width so "100%" is never clipped,
+    // while right-alignment keeps the right edge fixed at leftAxisWidth.
     drawSideText(
       ctx,
       `${Math.round(level * 100)}%`,
-      0,
-      y - 14,
-      leftAxisWidth - 6,
-      28,
+      -20,
+      y - 16, // Nudged up slightly to center the taller box
+      leftAxisWidth + 20,
+      32, // Increased height from 28 to 32 to prevent bottom clipping
       axisLabelFont,
       probAxisColor,
       "right",
@@ -385,9 +380,9 @@ function createWeatherChart(forecasts, width, height, lat, lon) {
       ctx,
       `${(level * maxRain).toFixed(1)}`,
       leftAxisWidth + chartAreaWidth + 6,
-      y - 14,
+      y - 16,
       rightAxisWidth - 6,
-      28,
+      32,
       axisLabelFont,
       precipAxisColor,
       "left",
@@ -452,7 +447,7 @@ function createWeatherChart(forecasts, width, height, lat, lon) {
 
   // Stroke the probability line
   ctx.addPath(curvePath);
-  ctx.setStrokeColor(new Color("#FF9500", 0.95)); // Vibrant warm orange
+  ctx.setStrokeColor(new Color("#FF9500", 0.95));
   ctx.setLineWidth(3.0);
   ctx.strokePath();
 
