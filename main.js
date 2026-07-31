@@ -282,7 +282,7 @@ function createWeatherChart(forecasts, width, height, lat, lon) {
       hourRowY,
       colWidth,
       hourRowH,
-      Font.semiboldSystemFont(25),
+      Font.semiboldSystemFont(30),
       defaultColor(true),
     );
 
@@ -310,7 +310,7 @@ function createWeatherChart(forecasts, width, height, lat, lon) {
       tempRowY,
       colWidth,
       tempRowH,
-      Font.boldSystemFont(25),
+      Font.boldSystemFont(30),
       defaultColor(true),
     );
 
@@ -326,7 +326,7 @@ function createWeatherChart(forecasts, width, height, lat, lon) {
       windRowY,
       colWidth,
       windRowH,
-      Font.systemFont(22),
+      Font.systemFont(26),
       subtitleColor(true),
     );
   }
