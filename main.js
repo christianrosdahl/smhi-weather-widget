@@ -94,52 +94,60 @@ async function createWidget() {
   let fetchTimeStr = "";
   let usingCache = false;
 
+  const paramCity = args.widgetParameter;
+
   try {
-    // 1. Fetch GPS Location & City Name
-    let locationSuccess = false;
-    try {
-      let place = null;
-      let paramCity = args.widgetParameter;
+    // 1. Fetch Location
+    if (paramCity && paramCity.trim()) {
+      // PARAMETER CITY MODE
+      try {
+        const place = await geocodeCity(paramCity.trim());
+        lat = place.latitude;
+        lon = place.longitude;
+        locationName = place.name;
+      } catch (e) {
+        console.error(`City lookup failed for "${paramCity}":`, e);
 
-      if (paramCity) {
-        try {
-          place = await geocodeCity(paramCity);
-        } catch (e) {
-          console.log("City lookup failed, falling back to GPS:", e);
+        // Show explicit error message if specified city is not found
+        const errText = widget.addText(`City "${paramCity}" not found`);
+        errText.textColor = Color.red();
+        errText.font = Font.boldSystemFont(12);
+        return widget;
+      }
+    } else {
+      // GPS MODE WITH CACHE FALLBACK
+      let gpsSuccess = false;
+      try {
+        const place = await getGPSLocation();
+        lat = place.latitude;
+        lon = place.longitude;
+        locationName = place.name;
+        gpsSuccess = true;
+      } catch (e) {
+        console.log("GPS location failed:", e);
+      }
+
+      // If GPS failed, check for cached data before falling back to Lund coordinates
+      if (!gpsSuccess) {
+        const cached = loadCache();
+        if (
+          cached &&
+          Array.isArray(cached.timeSeries) &&
+          cached.timeSeries.length > 0
+        ) {
+          console.log("GPS failed; using cached data instead of fallback.");
+          lat = cached.lat || FALLBACK_LAT;
+          lon = cached.lon || FALLBACK_LON;
+          locationName = cached.locationName || FALLBACK_NAME;
+          timeSeries = cached.timeSeries;
+          fetchTimeStr = cached.fetchTimeStr || "Unknown";
+          if (cached.url) widget.url = cached.url;
+          usingCache = true;
+        } else {
+          console.log(
+            "No valid cache found; proceeding with fallback location.",
+          );
         }
-      }
-
-      // Use GPS if no paramCity was provided OR if geocodeCity failed
-      if (!place) {
-        place = await getGPSLocation();
-      }
-
-      lat = place.latitude;
-      lon = place.longitude;
-      locationName = place.name;
-      locationSuccess = true;
-    } catch (e) {
-      console.log("All location methods failed:", e);
-    }
-
-    // If location lookup failed, try loading cached data before using fallback coordinates
-    if (!locationSuccess) {
-      const cached = loadCache();
-      if (
-        cached &&
-        Array.isArray(cached.timeSeries) &&
-        cached.timeSeries.length > 0
-      ) {
-        console.log("Location failed; using cached data instead of fallback.");
-        lat = cached.lat || FALLBACK_LAT;
-        lon = cached.lon || FALLBACK_LON;
-        locationName = cached.locationName || FALLBACK_NAME;
-        timeSeries = cached.timeSeries;
-        fetchTimeStr = cached.fetchTimeStr || "Unknown";
-        if (cached.url) widget.url = cached.url;
-        usingCache = true;
-      } else {
-        console.log("No valid cache found; proceeding with fallback location.");
       }
     }
 
@@ -233,10 +241,6 @@ async function createWidget() {
   const colWidthPt =
     (contentWidth - titleLeftInset - titleRightInset) / forecasts.length;
 
-  // Outer row centers the forecast block in the widget — exactly the same
-  // spacer/content/spacer pattern used for the chart image below — so the
-  // two rows are centered identically and stay locked together instead of
-  // one being flush-left and the other auto-centered.
   const forecastRow = widget.addStack();
   forecastRow.layoutHorizontally();
   forecastRow.addSpacer();
@@ -244,10 +248,9 @@ async function createWidget() {
   const forecastStack = forecastRow.addStack();
   forecastStack.layoutHorizontally();
   forecastStack.centerAlignContent();
-  forecastStack.spacing = 0; // Exactly 0 horizontal spacing between columns
-  forecastStack.size = new Size(contentWidth, 54); // Same width as the chart image below
+  forecastStack.spacing = 0;
+  forecastStack.size = new Size(contentWidth, 54);
 
-  // Left inset aligns column 0 center over the first dot of the probability curve
   forecastStack.addSpacer(titleLeftInset);
 
   for (let i = 0; i < forecasts.length; i++) {
@@ -258,12 +261,8 @@ async function createWidget() {
     colStack.layoutVertically();
     colStack.centerAlignContent();
     colStack.spacing = 1;
-    // Identical fixed point size guarantees mathematical alignment without UIKit flex drift
     colStack.size = new Size(colWidthPt, 54);
 
-    // Hour — a fixed-width row with flexible spacers on both sides. The
-    // spacers split the leftover space evenly, which is what actually
-    // centers the text (WidgetText has no .size of its own to anchor to).
     const hourRow = colStack.addStack();
     hourRow.layoutHorizontally();
     hourRow.centerAlignContent();
@@ -274,7 +273,6 @@ async function createWidget() {
     hourText.lineLimit = 1;
     hourText.minimumScaleFactor = 0.7;
 
-    // Weather emoji
     const symbolCode = getValue(item, "symbol_code", "Wsymb2");
     const night = isNight(itemTime, lat, lon);
     const emoji = getWeatherEmoji(symbolCode, night);
@@ -287,7 +285,6 @@ async function createWidget() {
     emojiText.lineLimit = 1;
     emojiText.minimumScaleFactor = 0.7;
 
-    // Temperature
     const temp = Math.round(getValue(item, "air_temperature", "t"));
     const tempRow = colStack.addStack();
     tempRow.layoutHorizontally();
@@ -299,7 +296,6 @@ async function createWidget() {
     tempText.lineLimit = 1;
     tempText.minimumScaleFactor = 0.6;
 
-    // Wind strength & direction
     const windSpeed = getValue(item, "wind_speed", "ws");
     const windDirection = getValue(item, "wind_from_direction", "wd");
     const windArrow = getWindArrow(windDirection);
@@ -314,9 +310,7 @@ async function createWidget() {
     windText.minimumScaleFactor = 0.6;
   }
 
-  // Right inset aligns column 15 center over the last dot of the probability curve
   forecastStack.addSpacer(titleRightInset);
-
   forecastRow.addSpacer();
 
   widget.addSpacer(2);
@@ -337,9 +331,6 @@ async function createWidget() {
   const chartWidget = chartStack.addImage(chartImg);
   chartWidget.resizable = true;
   chartWidget.applyFittingContentMode();
-  // Pin the displayed width to exactly contentWidth — the same value the
-  // forecast row above is built against — so both rows share one known,
-  // deterministic scale factor instead of relying on implicit auto-fit sizing.
   chartWidget.imageSize = new Size(
     contentWidth,
     contentWidth * (CHART_HEIGHT / CHART_WIDTH),
