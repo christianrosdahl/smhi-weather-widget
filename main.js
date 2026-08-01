@@ -2,7 +2,7 @@
 // FALLBACK CONFIGURATION
 // (Used if GPS permissions are denied/offline)
 // ==========================================
-const FALLBACK_NAME = "Lund";
+const FALLBACK_NAME = "Lund (fallback due to GPS failure)";
 const FALLBACK_LAT = 55.7047;
 const FALLBACK_LON = 13.191;
 
@@ -96,18 +96,29 @@ async function createWidget() {
   try {
     // 1. Fetch GPS Location & City Name
     try {
-      const loc = await Location.current();
-      lat = loc.latitude;
-      lon = loc.longitude;
-      const placemarks = await Location.reverseGeocode(lat, lon);
-      if (placemarks && placemarks.length > 0) {
-        locationName =
-          placemarks[0].locality ||
-          placemarks[0].postalAddress?.city ||
-          locationName;
+      let paramCity = args.widgetParameter;
+      if (paramCity) {
+        try {
+          let place = await geocodeCity(paramCity);
+          lat = place.latitude;
+          lon = place.longitude;
+          locationName = place.name;
+        } catch (e) {
+          console.log("City lookup failed, using GPS:", e);
+
+          let place = await getGPSLocation();
+          lat = place.latitude;
+          lon = place.longitude;
+          locationName = place.name;
+        }
+      } else {
+        let place = await getGPSLocation();
+        lat = place.latitude;
+        lon = place.longitude;
+        locationName = place.name;
       }
     } catch (e) {
-      console.log("GPS fetch failed, using fallback location: " + e);
+      console.log("All location methods failed:", e);
     }
 
     // 👉 MAKE WIDGET TAPPABLE (Opens SMHI forecast)
@@ -539,6 +550,47 @@ function getUpcomingHours(timeSeries, count) {
   });
 
   return futureOrCurrent.slice(0, count);
+}
+
+async function geocodeCity(city) {
+  let url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en&format=json`;
+
+  let req = new Request(url);
+  let data = await req.loadJSON();
+
+  if (!data.results || data.results.length === 0) {
+    throw new Error("City not found");
+  }
+
+  return {
+    latitude: data.results[0].latitude,
+    longitude: data.results[0].longitude,
+    name: data.results[0].name,
+  };
+}
+
+async function getGPSLocation() {
+  const loc = await Location.current();
+
+  let result = {
+    latitude: loc.latitude,
+    longitude: loc.longitude,
+    name: "Unknown",
+  };
+
+  const placemarks = await Location.reverseGeocode(
+    result.latitude,
+    result.longitude,
+  );
+
+  if (placemarks.length > 0) {
+    result.name =
+      placemarks[0].locality ||
+      placemarks[0].postalAddress?.city ||
+      result.name;
+  }
+
+  return result;
 }
 
 // ==========================================
