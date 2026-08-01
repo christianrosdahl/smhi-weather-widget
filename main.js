@@ -86,7 +86,7 @@ async function createWidget() {
 
   const paramCity = args.widgetParameter;
 
-  // 1. Resolve Location or Use Cache
+  // 1. Resolve Location (or fallback to cached coordinates)
   if (paramCity && paramCity.trim()) {
     // PARAMETER CITY MODE
     try {
@@ -109,23 +109,15 @@ async function createWidget() {
       lon = place.longitude;
       locationName = place.name;
     } catch (e) {
-      console.log("GPS location failed, checking cache:", e);
+      console.log("GPS location failed, checking cache for coordinates:", e);
       const cached = loadCache();
-      if (
-        cached &&
-        Array.isArray(cached.timeSeries) &&
-        cached.timeSeries.length > 0
-      ) {
-        console.log("Using cached data due to GPS failure.");
+      if (cached && cached.lat != null && cached.lon != null) {
+        console.log("Using cached coordinates to attempt SMHI fetch.");
         lat = cached.lat;
         lon = cached.lon;
-        locationName = cached.locationName;
-        timeSeries = cached.timeSeries;
-        fetchTimeStr = cached.fetchTimeStr || "Unknown";
-        if (cached.url) widget.url = cached.url;
-        usingCache = true;
+        locationName = cached.locationName || "Unknown";
       } else {
-        const errText = widget.addText("GPS failed & no cached data");
+        const errText = widget.addText("GPS failed & no cached location");
         errText.textColor = Color.red();
         errText.font = Font.boldSystemFont(12);
         return widget;
