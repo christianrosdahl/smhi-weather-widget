@@ -570,6 +570,7 @@ async function geocodeCity(city) {
 }
 
 async function getGPSLocation() {
+  Location.setAccuracyToThreeKilometers();
   const loc = await Location.current();
 
   let result = {
