@@ -7,22 +7,31 @@ const FALLBACK_LAT = 55.7047;
 const FALLBACK_LON = 13.191;
 
 // ==========================================
-// SHARED CHART DIMENSIONS
-// (Used both to draw the chart image and to compute matching
-// left/right insets for the title row, so "Lund" / "Updated ..."
-// line up with the chart's own left/right edges.)
+// SHARED CHART DIMENSIONS & PROPORTIONS
 // ==========================================
 const CHART_WIDTH = 1072;
-const CHART_HEIGHT = 340;
+const CHART_HEIGHT = 178;
 const CHART_LEFT_AXIS_WIDTH = 58;
 const CHART_RIGHT_AXIS_WIDTH = 68;
 
-// Approximate available content width (in points) of the widget the
-// chart is displayed in, after outer padding. This is only used to
-// scale the title row's insets proportionally to the chart's axis
-// widths — tune this if your widget family/device differs and the
-// alignment looks off (larger value = smaller insets, and vice versa).
-const ASSUMED_WIDGET_CONTENT_WIDTH = 323;
+// ==========================================
+// DYNAMIC DEVICE SCREEN SIZING
+// ==========================================
+function getWidgetContentWidth() {
+  const screenW = Device.screenSize().width;
+  const screenH = Device.screenSize().height;
+  const minDim = Math.min(screenW, screenH);
+
+  // Exact iOS Medium Widget content widths after 20pt total horizontal padding:
+  // Plus / Pro Max (430, 428 pt) -> 364 pt - 20 = 344 pt
+  // Standard / Pro (393, 390 pt) -> 338 pt - 20 = 318 pt
+  // Older Large (414 pt)         -> 360 pt - 20 = 340 pt
+  // Mini / Compact (375, 360 pt) -> 329 pt - 20 = 309 pt
+  if (minDim >= 428) return 344;
+  if (minDim >= 414) return 340;
+  if (minDim >= 390) return 318;
+  return 309;
+}
 
 // ==========================================
 // CACHE HELPERS
@@ -141,7 +150,6 @@ async function createWidget() {
       fetchTimeStr = cached.fetchTimeStr || "Unknown";
       if (cached.url) widget.url = cached.url;
     } else {
-      // Only show error message if no cached data exists at all
       const errText = widget.addText("Failed to load SMHI data");
       errText.textColor = Color.red();
       errText.font = Font.boldSystemFont(12);
@@ -150,19 +158,14 @@ async function createWidget() {
   }
 
   // 3. TITLE ROW
-  // Insets are proportional to the chart's own axis-label margins, so
-  // "Lund" and "Updated ..." line up with the chart's left/right edges.
-  const titleLeftInset = Math.round(
-    ASSUMED_WIDGET_CONTENT_WIDTH * (CHART_LEFT_AXIS_WIDTH / CHART_WIDTH),
-  );
-  const titleRightInset = Math.round(
-    ASSUMED_WIDGET_CONTENT_WIDTH * (CHART_RIGHT_AXIS_WIDTH / CHART_WIDTH),
-  );
+  const contentWidth = getWidgetContentWidth();
+  const titleLeftInset = contentWidth * (CHART_LEFT_AXIS_WIDTH / CHART_WIDTH);
+  const titleRightInset = contentWidth * (CHART_RIGHT_AXIS_WIDTH / CHART_WIDTH);
 
   const titleStack = widget.addStack();
   titleStack.layoutHorizontally();
   titleStack.centerAlignContent();
-  titleStack.setPadding(0, 2, 0, 2);
+  titleStack.setPadding(0, 4, 0, 4);
 
   titleStack.addSpacer(titleLeftInset);
 
@@ -178,12 +181,9 @@ async function createWidget() {
 
   titleStack.addSpacer(titleRightInset);
 
-  widget.addSpacer(6);
+  widget.addSpacer(4);
 
-  // 4. COMBINED TIMELINE + CHART IMAGE
-  // Hours, symbols, temps, and the precipitation bars/curve are all drawn
-  // onto ONE canvas using the same column-width math, so they line up
-  // exactly no matter the widget's rendered size.
+  // 4. FORECAST TEXT ROWS (NATIVE WIDGET STACK)
   const forecasts = getUpcomingHours(timeSeries, 16);
 
   if (forecasts.length === 0) {
@@ -193,6 +193,98 @@ async function createWidget() {
     return widget;
   }
 
+  const colWidthPt =
+    (contentWidth - titleLeftInset - titleRightInset) / forecasts.length;
+
+  // Outer row centers the forecast block in the widget — exactly the same
+  // spacer/content/spacer pattern used for the chart image below — so the
+  // two rows are centered identically and stay locked together instead of
+  // one being flush-left and the other auto-centered.
+  const forecastRow = widget.addStack();
+  forecastRow.layoutHorizontally();
+  forecastRow.addSpacer();
+
+  const forecastStack = forecastRow.addStack();
+  forecastStack.layoutHorizontally();
+  forecastStack.centerAlignContent();
+  forecastStack.spacing = 0; // Exactly 0 horizontal spacing between columns
+  forecastStack.size = new Size(contentWidth, 54); // Same width as the chart image below
+
+  // Left inset aligns column 0 center over the first dot of the probability curve
+  forecastStack.addSpacer(titleLeftInset);
+
+  for (let i = 0; i < forecasts.length; i++) {
+    const item = forecasts[i];
+    const itemTime = new Date(item.time || item.validTime);
+
+    const colStack = forecastStack.addStack();
+    colStack.layoutVertically();
+    colStack.centerAlignContent();
+    colStack.spacing = 1;
+    // Identical fixed point size guarantees mathematical alignment without UIKit flex drift
+    colStack.size = new Size(colWidthPt, 54);
+
+    // Hour — a fixed-width row with flexible spacers on both sides. The
+    // spacers split the leftover space evenly, which is what actually
+    // centers the text (WidgetText has no .size of its own to anchor to).
+    const hourRow = colStack.addStack();
+    hourRow.layoutHorizontally();
+    hourRow.centerAlignContent();
+    hourRow.size = new Size(colWidthPt, 12);
+    const hourText = hourRow.addText(String(itemTime.getHours()));
+    hourText.font = Font.semiboldSystemFont(9);
+    hourText.textColor = defaultColor();
+    hourText.lineLimit = 1;
+    hourText.minimumScaleFactor = 0.7;
+
+    // Weather emoji
+    const symbolCode = getValue(item, "symbol_code", "Wsymb2");
+    const night = isNight(itemTime, lat, lon);
+    const emoji = getWeatherEmoji(symbolCode, night);
+    const emojiRow = colStack.addStack();
+    emojiRow.layoutHorizontally();
+    emojiRow.centerAlignContent();
+    emojiRow.size = new Size(colWidthPt, 16);
+    const emojiText = emojiRow.addText(emoji);
+    emojiText.font = Font.systemFont(13);
+    emojiText.lineLimit = 1;
+    emojiText.minimumScaleFactor = 0.7;
+
+    // Temperature
+    const temp = Math.round(getValue(item, "air_temperature", "t"));
+    const tempRow = colStack.addStack();
+    tempRow.layoutHorizontally();
+    tempRow.size = new Size(colWidthPt, 12);
+    tempRow.centerAlignContent();
+    const tempText = tempRow.addText(`${temp}°`);
+    tempText.font = Font.boldSystemFont(9);
+    tempText.textColor = defaultColor();
+    tempText.lineLimit = 1;
+    tempText.minimumScaleFactor = 0.6;
+
+    // Wind strength & direction
+    const windSpeed = getValue(item, "wind_speed", "ws");
+    const windDirection = getValue(item, "wind_from_direction", "wd");
+    const windArrow = getWindArrow(windDirection);
+    const windRow = colStack.addStack();
+    windRow.layoutHorizontally();
+    windRow.size = new Size(colWidthPt, 11);
+    windRow.centerAlignContent();
+    const windText = windRow.addText(`${windArrow}${Math.round(windSpeed)}`);
+    windText.font = Font.systemFont(8);
+    windText.textColor = subtitleColor();
+    windText.lineLimit = 1;
+    windText.minimumScaleFactor = 0.6;
+  }
+
+  // Right inset aligns column 15 center over the last dot of the probability curve
+  forecastStack.addSpacer(titleRightInset);
+
+  forecastRow.addSpacer();
+
+  widget.addSpacer(2);
+
+  // 5. PRECIPITATION CHART IMAGE (BARS + CURVE)
   const chartStack = widget.addStack();
   chartStack.layoutHorizontally();
   chartStack.setPadding(0, 0, 0, 0);
@@ -208,6 +300,13 @@ async function createWidget() {
   const chartWidget = chartStack.addImage(chartImg);
   chartWidget.resizable = true;
   chartWidget.applyFittingContentMode();
+  // Pin the displayed width to exactly contentWidth — the same value the
+  // forecast row above is built against — so both rows share one known,
+  // deterministic scale factor instead of relying on implicit auto-fit sizing.
+  chartWidget.imageSize = new Size(
+    contentWidth,
+    contentWidth * (CHART_HEIGHT / CHART_WIDTH),
+  );
   chartStack.addSpacer();
 
   return widget;
@@ -215,8 +314,6 @@ async function createWidget() {
 
 // ==========================================
 // CHART GENERATOR (DrawContext)
-// Draws: hour row, emoji row, temp row, then precip bars + probability curve
-// All columns share the same `colWidth`, so everything aligns vertically.
 // ==========================================
 function createWeatherChart(forecasts, width, height, lat, lon) {
   const ctx = new DrawContext();
@@ -229,110 +326,7 @@ function createWeatherChart(forecasts, width, height, lat, lon) {
   const chartAreaWidth = width - leftAxisWidth - rightAxisWidth;
   const colWidth = chartAreaWidth / forecasts.length;
 
-  // --- Text block layout (hour / emoji / temp / wind) ---
-  const rowPad = 4;
-  const hourRowY = rowPad;
-  const hourRowH = 32;
-  const emojiRowY = hourRowY + hourRowH;
-  const emojiRowH = 58;
-  const tempRowY = emojiRowY + emojiRowH;
-  const tempRowH = 38;
-  const windRowY = tempRowY + tempRowH;
-  const windRowH = 34;
-  const textBlockBottom = windRowY + windRowH;
-
-  // --- Draw separate permanent white backdrops ---
-  ctx.setFillColor(new Color("#FFFFFF"));
-
-  // 1. White backdrop behind the HOURS row
-  const hourBackdropRect = new Rect(
-    leftAxisWidth,
-    hourRowY - 2,
-    chartAreaWidth,
-    hourRowH + 4,
-  );
-  const hourBackdropPath = new Path();
-  hourBackdropPath.addRoundedRect(hourBackdropRect, 10, 10);
-  ctx.addPath(hourBackdropPath);
-  ctx.fillPath();
-
-  // 2. White backdrop behind the combined TEMPERATURE + WIND rows
-  const tempWindBackdropRect = new Rect(
-    leftAxisWidth,
-    tempRowY - 2,
-    chartAreaWidth,
-    tempRowH + windRowH + 4,
-  );
-  const tempWindBackdropPath = new Path();
-  tempWindBackdropPath.addRoundedRect(tempWindBackdropRect, 12, 12);
-  ctx.addPath(tempWindBackdropPath);
-  ctx.fillPath();
-
-  for (let i = 0; i < forecasts.length; i++) {
-    const item = forecasts[i];
-    const colX = leftAxisWidth + i * colWidth;
-    const itemTime = new Date(item.time || item.validTime);
-
-    // Hour
-    const hourStr = String(itemTime.getHours());
-    drawCenteredText(
-      ctx,
-      hourStr,
-      colX,
-      hourRowY,
-      colWidth,
-      hourRowH,
-      Font.semiboldSystemFont(30),
-      defaultColor(true),
-    );
-
-    // Weather emoji (no backdrop behind this row)
-    const symbolCode = getValue(item, "symbol_code", "Wsymb2");
-    const night = isNight(itemTime, lat, lon);
-    const emoji = getWeatherEmoji(symbolCode, night);
-    drawCenteredText(
-      ctx,
-      emoji,
-      colX,
-      emojiRowY,
-      colWidth,
-      emojiRowH,
-      Font.systemFont(55),
-      defaultColor(true),
-    );
-
-    // Temperature
-    const temp = Math.round(getValue(item, "air_temperature", "t"));
-    drawCenteredText(
-      ctx,
-      `${temp}°`,
-      colX,
-      tempRowY,
-      colWidth,
-      tempRowH,
-      Font.boldSystemFont(30),
-      defaultColor(true),
-    );
-
-    // Wind: direction arrow + speed
-    const windSpeed = getValue(item, "wind_speed", "ws");
-    const windDirection = getValue(item, "wind_from_direction", "wd");
-    const windArrow = getWindArrow(windDirection);
-    const windLabel = `${windArrow}${Math.round(windSpeed)}`;
-    drawCenteredText(
-      ctx,
-      windLabel,
-      colX,
-      windRowY,
-      colWidth,
-      windRowH,
-      Font.systemFont(26),
-      subtitleColor(true),
-    );
-  }
-
-  // --- Chart area layout (below text block) ---
-  const chartTopPad = textBlockBottom + 8;
+  const chartTopPad = 12;
   const chartBottomPad = 8;
   const chartHeight = height - chartTopPad - chartBottomPad;
 
@@ -361,15 +355,13 @@ function createWeatherChart(forecasts, width, height, lat, lon) {
     ctx.strokePath();
 
     // Left axis: probability of precipitation (%)
-    // We start at x = -20 and add 20 to the width so "100%" is never clipped,
-    // while right-alignment keeps the right edge fixed at leftAxisWidth.
     drawSideText(
       ctx,
       `${Math.round(level * 100)}%`,
       -20,
-      y - 16, // Nudged up slightly to center the taller box
+      y - 16,
       leftAxisWidth + 20,
-      32, // Increased height from 28 to 32 to prevent bottom clipping
+      32,
       axisLabelFont,
       probAxisColor,
       "right",
@@ -491,9 +483,6 @@ function drawSideText(ctx, text, x, y, w, h, font, color, align) {
 }
 
 function getWindArrow(directionFromDeg) {
-  // SMHI's wind_direction is the direction the wind is blowing FROM.
-  // Rotate 180° so the arrow points where the wind is blowing TO,
-  // matching the convention used by most weather apps.
   const toDeg = (((directionFromDeg + 180) % 360) + 360) % 360;
   const arrows = ["↑", "↗", "→", "↘", "↓", "↙", "←", "↖"];
   const index = Math.round(toDeg / 45) % 8;
@@ -502,14 +491,14 @@ function getWindArrow(directionFromDeg) {
 
 function defaultColor(forCanvas = false) {
   if (forCanvas) {
-    return new Color("#1C1C1E"); // Always dark for canvas text on white backdrop
+    return new Color("#1C1C1E");
   }
   return Color.dynamic(new Color("#1C1C1E"), new Color("#FFFFFF"));
 }
 
 function subtitleColor(forCanvas = false) {
   if (forCanvas) {
-    return new Color("#6C6C70"); // Always gray for canvas text on white backdrop
+    return new Color("#6C6C70");
   }
   return Color.dynamic(new Color("#6C6C70"), new Color("#98989D"));
 }
@@ -579,7 +568,6 @@ function isNight(date, lat, lon) {
   return elevation < -0.833;
 }
 
-// SMHI Wsymb2 code to emoji mapping with night adjustments
 function getWeatherEmoji(code, night) {
   if (night) {
     if (code === 1 || code === 2) return "🌙";
