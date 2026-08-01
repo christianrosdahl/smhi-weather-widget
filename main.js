@@ -92,59 +92,85 @@ async function createWidget() {
   let locationName = FALLBACK_NAME;
   let timeSeries = [];
   let fetchTimeStr = "";
+  let usingCache = false;
 
   try {
     // 1. Fetch GPS Location & City Name
+    let locationSuccess = false;
     try {
+      let place = null;
       let paramCity = args.widgetParameter;
+
       if (paramCity) {
         try {
-          let place = await geocodeCity(paramCity);
-          lat = place.latitude;
-          lon = place.longitude;
-          locationName = place.name;
+          place = await geocodeCity(paramCity);
         } catch (e) {
-          console.log("City lookup failed, using GPS:", e);
-
-          let place = await getGPSLocation();
-          lat = place.latitude;
-          lon = place.longitude;
-          locationName = place.name;
+          console.log("City lookup failed, falling back to GPS:", e);
         }
-      } else {
-        let place = await getGPSLocation();
-        lat = place.latitude;
-        lon = place.longitude;
-        locationName = place.name;
       }
+
+      // Use GPS if no paramCity was provided OR if geocodeCity failed
+      if (!place) {
+        place = await getGPSLocation();
+      }
+
+      lat = place.latitude;
+      lon = place.longitude;
+      locationName = place.name;
+      locationSuccess = true;
     } catch (e) {
       console.log("All location methods failed:", e);
     }
 
-    // 👉 MAKE WIDGET TAPPABLE (Opens SMHI forecast)
-    widget.url = `https://www.smhi.se/vader/prognoser-och-varningar/vaderprognos`;
-
-    // 2. Fetch SMHI API Data
-    const apiUrl = `https://opendata-download-metfcst.smhi.se/api/category/snow1g/version/1/geotype/point/lon/${lon.toFixed(4)}/lat/${lat.toFixed(4)}/data.json`;
-    const req = new Request(apiUrl);
-    const data = await req.loadJSON();
-
-    timeSeries = data?.timeSeries || [];
-    if (!Array.isArray(timeSeries) || timeSeries.length === 0) {
-      throw new Error("No timeSeries in SMHI response");
+    // If location lookup failed, try loading cached data before using fallback coordinates
+    if (!locationSuccess) {
+      const cached = loadCache();
+      if (
+        cached &&
+        Array.isArray(cached.timeSeries) &&
+        cached.timeSeries.length > 0
+      ) {
+        console.log("Location failed; using cached data instead of fallback.");
+        lat = cached.lat || FALLBACK_LAT;
+        lon = cached.lon || FALLBACK_LON;
+        locationName = cached.locationName || FALLBACK_NAME;
+        timeSeries = cached.timeSeries;
+        fetchTimeStr = cached.fetchTimeStr || "Unknown";
+        if (cached.url) widget.url = cached.url;
+        usingCache = true;
+      } else {
+        console.log("No valid cache found; proceeding with fallback location.");
+      }
     }
 
-    fetchTimeStr = formatTime(new Date());
+    // 👉 MAKE WIDGET TAPPABLE (Opens SMHI forecast)
+    if (!widget.url) {
+      widget.url = `https://www.smhi.se/vader/prognoser-och-varningar/vaderprognos`;
+    }
 
-    // Save successful fetch to disk
-    saveCache({
-      lat,
-      lon,
-      locationName,
-      timeSeries,
-      fetchTimeStr,
-      url: widget.url,
-    });
+    // 2. Fetch SMHI API Data (only if we aren't already using cached data)
+    if (!usingCache) {
+      const apiUrl = `https://opendata-download-metfcst.smhi.se/api/category/snow1g/version/1/geotype/point/lon/${lon.toFixed(4)}/lat/${lat.toFixed(4)}/data.json`;
+      const req = new Request(apiUrl);
+      const data = await req.loadJSON();
+
+      timeSeries = data?.timeSeries || [];
+      if (!Array.isArray(timeSeries) || timeSeries.length === 0) {
+        throw new Error("No timeSeries in SMHI response");
+      }
+
+      fetchTimeStr = formatTime(new Date());
+
+      // Save successful fetch to disk
+      saveCache({
+        lat,
+        lon,
+        locationName,
+        timeSeries,
+        fetchTimeStr,
+        url: widget.url,
+      });
+    }
   } catch (e) {
     console.error("Update failed, falling back to cache: " + e);
     const cached = loadCache();
