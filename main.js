@@ -1,12 +1,4 @@
 // ==========================================
-// FALLBACK CONFIGURATION
-// (Used if GPS permissions are denied/offline)
-// ==========================================
-const FALLBACK_NAME = "Lund (fallback due to GPS failure)";
-const FALLBACK_LAT = 55.7047;
-const FALLBACK_LON = 13.191;
-
-// ==========================================
 // SHARED CHART DIMENSIONS & PROPORTIONS
 // ==========================================
 const CHART_WIDTH = 1072;
@@ -87,77 +79,68 @@ async function createWidget() {
     new Color("#0B1D3A"),
   );
 
-  let lat = FALLBACK_LAT;
-  let lon = FALLBACK_LON;
-  let locationName = FALLBACK_NAME;
+  let lat, lon, locationName;
   let timeSeries = [];
   let fetchTimeStr = "";
   let usingCache = false;
 
   const paramCity = args.widgetParameter;
 
-  try {
-    // 1. Fetch Location
-    if (paramCity && paramCity.trim()) {
-      // PARAMETER CITY MODE
-      try {
-        const place = await geocodeCity(paramCity.trim());
-        lat = place.latitude;
-        lon = place.longitude;
-        locationName = place.name;
-      } catch (e) {
-        console.error(`City lookup failed for "${paramCity}":`, e);
-
-        // Show explicit error message if specified city is not found
-        const errText = widget.addText(`City "${paramCity}" not found`);
+  // 1. Resolve Location or Use Cache
+  if (paramCity && paramCity.trim()) {
+    // PARAMETER CITY MODE
+    try {
+      const place = await geocodeCity(paramCity.trim());
+      lat = place.latitude;
+      lon = place.longitude;
+      locationName = place.name;
+    } catch (e) {
+      console.error(`City lookup failed for "${paramCity}":`, e);
+      const errText = widget.addText(`City "${paramCity}" not found`);
+      errText.textColor = Color.red();
+      errText.font = Font.boldSystemFont(12);
+      return widget;
+    }
+  } else {
+    // GPS MODE WITH CACHE FALLBACK
+    try {
+      const place = await getGPSLocation();
+      lat = place.latitude;
+      lon = place.longitude;
+      locationName = place.name;
+    } catch (e) {
+      console.log("GPS location failed, checking cache:", e);
+      const cached = loadCache();
+      if (
+        cached &&
+        Array.isArray(cached.timeSeries) &&
+        cached.timeSeries.length > 0
+      ) {
+        console.log("Using cached data due to GPS failure.");
+        lat = cached.lat;
+        lon = cached.lon;
+        locationName = cached.locationName;
+        timeSeries = cached.timeSeries;
+        fetchTimeStr = cached.fetchTimeStr || "Unknown";
+        if (cached.url) widget.url = cached.url;
+        usingCache = true;
+      } else {
+        const errText = widget.addText("GPS failed & no cached data");
         errText.textColor = Color.red();
         errText.font = Font.boldSystemFont(12);
         return widget;
       }
-    } else {
-      // GPS MODE WITH CACHE FALLBACK
-      let gpsSuccess = false;
-      try {
-        const place = await getGPSLocation();
-        lat = place.latitude;
-        lon = place.longitude;
-        locationName = place.name;
-        gpsSuccess = true;
-      } catch (e) {
-        console.log("GPS location failed:", e);
-      }
-
-      // If GPS failed, check for cached data before falling back to Lund coordinates
-      if (!gpsSuccess) {
-        const cached = loadCache();
-        if (
-          cached &&
-          Array.isArray(cached.timeSeries) &&
-          cached.timeSeries.length > 0
-        ) {
-          console.log("GPS failed; using cached data instead of fallback.");
-          lat = cached.lat || FALLBACK_LAT;
-          lon = cached.lon || FALLBACK_LON;
-          locationName = cached.locationName || FALLBACK_NAME;
-          timeSeries = cached.timeSeries;
-          fetchTimeStr = cached.fetchTimeStr || "Unknown";
-          if (cached.url) widget.url = cached.url;
-          usingCache = true;
-        } else {
-          console.log(
-            "No valid cache found; proceeding with fallback location.",
-          );
-        }
-      }
     }
+  }
 
-    // 👉 MAKE WIDGET TAPPABLE (Opens SMHI forecast)
-    if (!widget.url) {
-      widget.url = `https://www.smhi.se/vader/prognoser-och-varningar/vaderprognos`;
-    }
+  // 👉 MAKE WIDGET TAPPABLE (Opens SMHI forecast)
+  if (!widget.url) {
+    widget.url = `https://www.smhi.se/vader/prognoser-och-varningar/vaderprognos`;
+  }
 
-    // 2. Fetch SMHI API Data (only if we aren't already using cached data)
-    if (!usingCache) {
+  // 2. Fetch SMHI API Data (only if we aren't already using cached data)
+  if (!usingCache) {
+    try {
       const apiUrl = `https://opendata-download-metfcst.smhi.se/api/category/snow1g/version/1/geotype/point/lon/${lon.toFixed(4)}/lat/${lat.toFixed(4)}/data.json`;
       const req = new Request(apiUrl);
       const data = await req.loadJSON();
@@ -178,27 +161,27 @@ async function createWidget() {
         fetchTimeStr,
         url: widget.url,
       });
-    }
-  } catch (e) {
-    console.error("Update failed, falling back to cache: " + e);
-    const cached = loadCache();
+    } catch (e) {
+      console.error("SMHI update failed, checking cache: " + e);
+      const cached = loadCache();
 
-    if (
-      cached &&
-      Array.isArray(cached.timeSeries) &&
-      cached.timeSeries.length > 0
-    ) {
-      lat = cached.lat || FALLBACK_LAT;
-      lon = cached.lon || FALLBACK_LON;
-      locationName = cached.locationName || FALLBACK_NAME;
-      timeSeries = cached.timeSeries;
-      fetchTimeStr = cached.fetchTimeStr || "Unknown";
-      if (cached.url) widget.url = cached.url;
-    } else {
-      const errText = widget.addText("Failed to load SMHI data");
-      errText.textColor = Color.red();
-      errText.font = Font.boldSystemFont(12);
-      return widget;
+      if (
+        cached &&
+        Array.isArray(cached.timeSeries) &&
+        cached.timeSeries.length > 0
+      ) {
+        lat = cached.lat;
+        lon = cached.lon;
+        locationName = cached.locationName;
+        timeSeries = cached.timeSeries;
+        fetchTimeStr = cached.fetchTimeStr || "Unknown";
+        if (cached.url) widget.url = cached.url;
+      } else {
+        const errText = widget.addText("Failed to load SMHI data");
+        errText.textColor = Color.red();
+        errText.font = Font.boldSystemFont(12);
+        return widget;
+      }
     }
   }
 
