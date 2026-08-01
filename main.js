@@ -81,10 +81,10 @@ async function createWidget() {
   const widget = new ListWidget();
   widget.setPadding(10, 3, 10, 3);
 
-  // Light Mode: White background | Dark Mode: Pure Black background
+  // Light Mode and Dark Mode colors
   widget.backgroundColor = Color.dynamic(
-    new Color("#FFFFFF"),
-    new Color("#000000"),
+    new Color("#F2F4F7"),
+    new Color("#0B1D3A"),
   );
 
   let lat = FALLBACK_LAT;
