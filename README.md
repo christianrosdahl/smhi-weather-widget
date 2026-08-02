@@ -33,7 +33,7 @@ An iPhone medium-sized widget for [Scriptable](https://scriptable.app) that disp
 
 ### Step 2: Add the Script
 
-1. Open [smhi-weather-widget.js](smhi-weather-widget.js) in this repository and tap **Raw** (or copy the code directly).
+1. Open [smhi-weather-widget.js](smhi-weather-widget.js) in this repository and tap the copy button to the right of the **Raw** button above the code.
 2. Open the **Scriptable** app on your iPhone or iPad.
 3. Tap the **`+`** icon in the top right corner to create a new script.
 4. Paste the copied JavaScript code into the editor.
