@@ -137,6 +137,7 @@ async function createWidget() {
       const req = new Request(apiUrl);
       const data = await req.loadJSON();
 
+      // Check if SMHI returned valid forecast data
       timeSeries = data?.timeSeries || [];
       if (!Array.isArray(timeSeries) || timeSeries.length === 0) {
         throw new Error("No timeSeries in SMHI response");
@@ -157,6 +158,24 @@ async function createWidget() {
       console.error("SMHI update failed, checking cache: " + e);
       const cached = loadCache();
 
+      // If using a parameter city, check if SMHI rejected the coordinates
+      // or if there is no matching cache for this specific city.
+      if (paramCity && paramCity.trim()) {
+        const isSameCity =
+          cached &&
+          cached.locationName &&
+          cached.locationName.toLowerCase() === locationName.toLowerCase();
+
+        // If we don't have a cache specifically for this city, show a targeted error
+        if (!isSameCity) {
+          const errText = widget.addText(`No SMHI data for "${locationName}"`);
+          errText.textColor = Color.red();
+          errText.font = Font.boldSystemFont(12);
+          return widget;
+        }
+      }
+
+      // Fall back to cache if available
       if (
         cached &&
         Array.isArray(cached.timeSeries) &&
