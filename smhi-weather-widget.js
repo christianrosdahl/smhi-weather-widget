@@ -82,7 +82,6 @@ async function createWidget() {
   let lat, lon, locationName;
   let timeSeries = [];
   let fetchTimeStr = "";
-  let usingCache = false;
 
   const paramCity = args.widgetParameter;
 
@@ -130,69 +129,67 @@ async function createWidget() {
     widget.url = `https://www.smhi.se/vader/prognoser-och-varningar/vaderprognos`;
   }
 
-  // 2. Fetch SMHI API Data (only if we aren't already using cached data)
-  if (!usingCache) {
-    try {
-      const apiUrl = `https://opendata-download-metfcst.smhi.se/api/category/snow1g/version/1/geotype/point/lon/${lon.toFixed(4)}/lat/${lat.toFixed(4)}/data.json`;
-      const req = new Request(apiUrl);
-      const data = await req.loadJSON();
+  // 2. Fetch SMHI API Data
+  try {
+    const apiUrl = `https://opendata-download-metfcst.smhi.se/api/category/snow1g/version/1/geotype/point/lon/${lon.toFixed(4)}/lat/${lat.toFixed(4)}/data.json`;
+    const req = new Request(apiUrl);
+    const data = await req.loadJSON();
 
-      // Check if SMHI returned valid forecast data
-      timeSeries = data?.timeSeries || [];
-      if (!Array.isArray(timeSeries) || timeSeries.length === 0) {
-        throw new Error("No timeSeries in SMHI response");
-      }
+    // Check if SMHI returned valid forecast data
+    timeSeries = data?.timeSeries || [];
+    if (!Array.isArray(timeSeries) || timeSeries.length === 0) {
+      throw new Error("No timeSeries in SMHI response");
+    }
 
-      fetchTimeStr = formatTime(new Date());
+    fetchTimeStr = formatTime(new Date());
 
-      // Save successful fetch to disk
-      saveCache({
-        lat,
-        lon,
-        locationName,
-        timeSeries,
-        fetchTimeStr,
-        url: widget.url,
-      });
-    } catch (e) {
-      console.error("SMHI update failed, checking cache: " + e);
-      const cached = loadCache();
+    // Save successful fetch to disk
+    saveCache({
+      lat,
+      lon,
+      locationName,
+      timeSeries,
+      fetchTimeStr,
+      url: widget.url,
+    });
+  } catch (e) {
+    console.error("SMHI update failed, checking cache: " + e);
+    const cached = loadCache();
 
-      // If using a parameter city, check if SMHI rejected the coordinates
-      // or if there is no matching cache for this specific city.
-      if (paramCity && paramCity.trim()) {
-        const isSameCity =
-          cached &&
-          cached.locationName &&
-          cached.locationName.toLowerCase() === locationName.toLowerCase();
-
-        // If we don't have a cache specifically for this city, show a targeted error
-        if (!isSameCity) {
-          const errText = widget.addText(`No SMHI data for "${locationName}"`);
-          errText.textColor = Color.red();
-          errText.font = Font.boldSystemFont(12);
-          return widget;
-        }
-      }
-
-      // Fall back to cache if available
-      if (
+    // If using a parameter city, check if SMHI rejected the coordinates
+    // or if there is no matching cache for this specific city.
+    if (paramCity && paramCity.trim()) {
+      const isSameCity =
         cached &&
-        Array.isArray(cached.timeSeries) &&
-        cached.timeSeries.length > 0
-      ) {
-        lat = cached.lat;
-        lon = cached.lon;
-        locationName = cached.locationName;
-        timeSeries = cached.timeSeries;
-        fetchTimeStr = cached.fetchTimeStr || "Unknown";
-        if (cached.url) widget.url = cached.url;
-      } else {
-        const errText = widget.addText("Failed to load SMHI data");
+        cached.locationName &&
+        cached.locationName.toLowerCase() === locationName.toLowerCase();
+
+      // If we don't have a cache specifically for this city, show a targeted error
+      if (!isSameCity) {
+        const errText = widget.addText(`No SMHI data for "${locationName}"`);
         errText.textColor = Color.red();
         errText.font = Font.boldSystemFont(12);
         return widget;
       }
+    }
+
+    // Fall back to cache if available
+    if (
+      cached &&
+      Array.isArray(cached.timeSeries) &&
+      cached.timeSeries.length > 0
+    ) {
+      lat = cached.lat;
+      lon = cached.lon;
+      locationName = cached.locationName;
+      timeSeries = cached.timeSeries;
+      fetchTimeStr = cached.fetchTimeStr || "Unknown";
+      if (cached.url) widget.url = cached.url;
+    } else {
+      const errText = widget.addText("Failed to load SMHI data");
+      errText.textColor = Color.red();
+      errText.font = Font.boldSystemFont(12);
+      return widget;
     }
   }
 
