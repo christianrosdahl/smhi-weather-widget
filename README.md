@@ -1,6 +1,6 @@
 # 🌤️ SMHI Weather Forecast iPhone Widget
 
-An iPhone medium-sized widget for [Scriptable](https://scriptable.app) that displays a clean, detailed 16-hour weather forecast using data from the Swedish Meteorological and Hydrological Institute ([SMHI](https://www.smhi.se/)).
+An iPhone medium-sized widget for [Scriptable](https://scriptable.app) that displays a clean, detailed 16-hour weather forecast using data from the Swedish Meteorological and Hydrological Institute ([SMHI](https://www.smhi.se/)). When no precipitation is expected, the widget automatically adapts its layout to show an extended 32-hour outlook.
 
 <p align="center">
   <img src="assets/preview-light.png" alt="Widget Preview (light mode)" width="420" />
@@ -10,8 +10,9 @@ An iPhone medium-sized widget for [Scriptable](https://scriptable.app) that disp
 ## ✨ Features
 
 - **SMHI Open Data API:** Highly accurate forecasts for Sweden and the surrounding northern European region (see image below).
-- **16-Hour Hourly Breakdown:** View hourly temperature, wind speed, wind direction, and weather symbols at a glance.
-- **Precipitation & Probability Chart:** Combined visual chart displaying:
+- **16-Hour Default Breakdown:** View hourly temperature, wind speed, wind direction, and weather symbols at a glance for the upcoming 16 hours.
+- **Dynamic 32-Hour Horizon (Bonus Info):** When the probability of precipitation across all 16 initial hours is 0%, the precipitation diagram is omitted to make better use of screen space. In its place, a second 16-hour row is displayed, extending your forecast outlook to a full 32 hours.
+- **Precipitation & Probability Chart:** Shown by default whenever precipitation is possible during the initial 16-hour window. Combined visual chart displaying:
   - **Orange Curve:** Probability of precipitation (`%`).
   - **Blue Bars:** Min/Max expected precipitation (`mm`).
 - **GPS & Custom City Support:** Automatically detects your location via GPS, or allows you to specify a fixed city name via a widget parameter.

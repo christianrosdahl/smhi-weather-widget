@@ -222,16 +222,91 @@ async function createWidget() {
   titleStack.addSpacer(titleRightInset);
   widget.addSpacer(4);
 
-  // 4. FORECAST TEXT ROWS (NATIVE WIDGET STACK)
-  const forecasts = getUpcomingHours(timeSeries, 16);
+  // 4. FORECAST DATA PREPARATION (32 hours total)
+  const allForecasts = getUpcomingHours(timeSeries, 32);
+  const firstRowForecasts = allForecasts.slice(0, 16);
+  const secondRowForecasts = allForecasts.slice(16, 32);
 
-  if (forecasts.length === 0) {
+  if (firstRowForecasts.length === 0) {
     return showError(widget, "No upcoming forecast data", Color.orange());
   }
 
   const colWidthPt =
-    (contentWidth - titleLeftInset - titleRightInset) / forecasts.length;
+    (contentWidth - titleLeftInset - titleRightInset) /
+    firstRowForecasts.length;
 
+  // Render first 16-hour forecast row
+  addForecastRow(
+    widget,
+    firstRowForecasts,
+    contentWidth,
+    titleLeftInset,
+    titleRightInset,
+    colWidthPt,
+    lat,
+    lon,
+  );
+
+  // Check if probability of precipitation is 0 across all 16 hours
+  const isZeroPop = firstRowForecasts.every((item) => {
+    const pop = getValue(item, "probability_of_precipitation", "pop") || 0;
+    return pop === 0;
+  });
+
+  // 5. CONDITIONAL RENDER: 2nd Forecast Row OR Precipitation Chart
+  if (isZeroPop && secondRowForecasts.length > 0) {
+    widget.addSpacer(10);
+    addForecastRow(
+      widget,
+      secondRowForecasts,
+      contentWidth,
+      titleLeftInset,
+      titleRightInset,
+      colWidthPt,
+      lat,
+      lon,
+    );
+  } else {
+    widget.addSpacer(2);
+
+    const chartStack = widget.addStack();
+    chartStack.layoutHorizontally();
+    chartStack.setPadding(0, 0, 0, 0);
+
+    chartStack.addSpacer();
+    const chartImg = createWeatherChart(
+      firstRowForecasts,
+      CHART_WIDTH,
+      CHART_HEIGHT,
+      lat,
+      lon,
+    );
+    const chartWidget = chartStack.addImage(chartImg);
+    chartWidget.resizable = true;
+    chartWidget.applyFittingContentMode();
+    chartWidget.imageSize = new Size(
+      contentWidth,
+      contentWidth * (CHART_HEIGHT / CHART_WIDTH),
+    );
+    chartStack.addSpacer();
+  }
+
+  return widget;
+}
+
+// ==========================================
+// FORECAST ROW HELPER
+// ==========================================
+function addForecastRow(
+  widget,
+  forecasts,
+  contentWidth,
+  titleLeftInset,
+  titleRightInset,
+  colWidthPt,
+  lat,
+  lon,
+) {
   const forecastRow = widget.addStack();
   forecastRow.layoutHorizontally();
   forecastRow.addSpacer();
@@ -303,32 +378,6 @@ async function createWidget() {
 
   forecastStack.addSpacer(titleRightInset);
   forecastRow.addSpacer();
-
-  widget.addSpacer(2);
-
-  // 5. PRECIPITATION CHART IMAGE (BARS + CURVE)
-  const chartStack = widget.addStack();
-  chartStack.layoutHorizontally();
-  chartStack.setPadding(0, 0, 0, 0);
-
-  chartStack.addSpacer();
-  const chartImg = createWeatherChart(
-    forecasts,
-    CHART_WIDTH,
-    CHART_HEIGHT,
-    lat,
-    lon,
-  );
-  const chartWidget = chartStack.addImage(chartImg);
-  chartWidget.resizable = true;
-  chartWidget.applyFittingContentMode();
-  chartWidget.imageSize = new Size(
-    contentWidth,
-    contentWidth * (CHART_HEIGHT / CHART_WIDTH),
-  );
-  chartStack.addSpacer();
-
-  return widget;
 }
 
 // ==========================================
