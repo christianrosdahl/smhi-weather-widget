@@ -7,12 +7,44 @@ const CHART_LEFT_AXIS_WIDTH = 58;
 const CHART_RIGHT_AXIS_WIDTH = 68;
 
 // ==========================================
+// STATIC WEATHER MAPPINGS
+// ==========================================
+const WEATHER_EMOJI_MAP = {
+  1: "☀️", // Clear sky
+  2: "🌤️", // Nearly clear sky
+  3: "⛅", // Variable cloudiness
+  4: "⛅", // Halfclear sky
+  5: "🌥️", // Cloudy sky
+  6: "☁️", // Overcast
+  7: "🌫️", // Fog
+  8: "🌦️", // Light rain showers
+  9: "🌦️", // Moderate rain showers
+  10: "🌦️", // Heavy rain showers
+  11: "⛈️", // Thunderstorm
+  12: "🌨️", // Light sleet showers
+  13: "🌨️", // Moderate sleet showers
+  14: "🌨️", // Heavy sleet showers
+  15: "🌨️", // Light snow showers
+  16: "🌨️", // Moderate snow showers
+  17: "🌨️", // Heavy snow showers
+  18: "🌧️", // Light rain
+  19: "🌧️", // Moderate rain
+  20: "🌧️", // Heavy rain
+  21: "🌩️", // Thunder
+  22: "🌨️", // Light sleet
+  23: "🌨️", // Moderate sleet
+  24: "🌨️", // Heavy sleet
+  25: "🌨️", // Light snowfall
+  26: "🌨️", // Moderate snowfall
+  27: "🌨️", // Heavy snowfall
+};
+
+// ==========================================
 // DYNAMIC DEVICE SCREEN SIZING
 // ==========================================
 function getWidgetContentWidth() {
-  const screenW = Device.screenSize().width;
-  const screenH = Device.screenSize().height;
-  const minDim = Math.min(screenW, screenH);
+  const { width, height } = Device.screenSize();
+  const minDim = Math.min(width, height);
 
   // Exact iOS Medium Widget content widths after 20pt total horizontal padding:
   // Plus / Pro Max (430, 428 pt) -> 364 pt - 20 = 344 pt
@@ -43,16 +75,13 @@ function saveCache(data) {
 
 function loadCache() {
   const fm = FileManager.local();
-  if (fm.fileExists(cachePath)) {
-    try {
-      const raw = fm.readString(cachePath);
-      return JSON.parse(raw);
-    } catch (e) {
-      console.error("Failed to read cache: " + e);
-      return null;
-    }
+  if (!fm.fileExists(cachePath)) return null;
+  try {
+    return JSON.parse(fm.readString(cachePath));
+  } catch (e) {
+    console.error("Failed to read cache: " + e);
+    return null;
   }
-  return null;
 }
 
 // ==========================================
@@ -72,8 +101,6 @@ Script.complete();
 async function createWidget() {
   const widget = new ListWidget();
   widget.setPadding(10, 3, 10, 3);
-
-  // Light Mode and Dark Mode colors
   widget.backgroundColor = Color.dynamic(
     new Color("#F2F4F7"),
     new Color("#0B1D3A"),
@@ -82,12 +109,10 @@ async function createWidget() {
   let lat, lon, locationName;
   let timeSeries = [];
   let fetchTimeStr = "";
-
   const paramCity = args.widgetParameter;
 
   // 1. Resolve Location (or fallback to cached coordinates)
   if (paramCity && paramCity.trim()) {
-    // PARAMETER CITY MODE
     try {
       const place = await geocodeCity(paramCity.trim());
       lat = place.latitude;
@@ -95,13 +120,9 @@ async function createWidget() {
       locationName = place.name;
     } catch (e) {
       console.error(`City lookup failed for "${paramCity}":`, e);
-      const errText = widget.addText(`City "${paramCity}" not found`);
-      errText.textColor = Color.red();
-      errText.font = Font.boldSystemFont(12);
-      return widget;
+      return showError(widget, `City "${paramCity}" not found`);
     }
   } else {
-    // GPS MODE WITH CACHE FALLBACK
     try {
       const place = await getGPSLocation();
       lat = place.latitude;
@@ -116,17 +137,14 @@ async function createWidget() {
         lon = cached.lon;
         locationName = cached.locationName || "Unknown";
       } else {
-        const errText = widget.addText("GPS failed & no cached location");
-        errText.textColor = Color.red();
-        errText.font = Font.boldSystemFont(12);
-        return widget;
+        return showError(widget, "GPS failed & no cached location");
       }
     }
   }
 
-  // 👉 MAKE WIDGET TAPPABLE (Opens SMHI forecast)
   if (!widget.url) {
-    widget.url = `https://www.smhi.se/vader/prognoser-och-varningar/vaderprognos`;
+    widget.url =
+      "https://www.smhi.se/vader/prognoser-och-varningar/vaderprognos";
   }
 
   // 2. Fetch SMHI API Data
@@ -135,7 +153,6 @@ async function createWidget() {
     const req = new Request(apiUrl);
     const data = await req.loadJSON();
 
-    // Check if SMHI returned valid forecast data
     timeSeries = data?.timeSeries || [];
     if (!Array.isArray(timeSeries) || timeSeries.length === 0) {
       throw new Error("No timeSeries in SMHI response");
@@ -143,7 +160,6 @@ async function createWidget() {
 
     fetchTimeStr = formatTime(new Date());
 
-    // Save successful fetch to disk
     saveCache({
       lat,
       lon,
@@ -156,24 +172,15 @@ async function createWidget() {
     console.error("SMHI update failed, checking cache: " + e);
     const cached = loadCache();
 
-    // If using a parameter city, check if SMHI rejected the coordinates
-    // or if there is no matching cache for this specific city.
     if (paramCity && paramCity.trim()) {
       const isSameCity =
-        cached &&
-        cached.locationName &&
-        cached.locationName.toLowerCase() === locationName.toLowerCase();
+        cached?.locationName?.toLowerCase() === locationName.toLowerCase();
 
-      // If we don't have a cache specifically for this city, show a targeted error
       if (!isSameCity) {
-        const errText = widget.addText(`No SMHI data for "${locationName}"`);
-        errText.textColor = Color.red();
-        errText.font = Font.boldSystemFont(12);
-        return widget;
+        return showError(widget, `No SMHI data for "${locationName}"`);
       }
     }
 
-    // Fall back to cache if available
     if (
       cached &&
       Array.isArray(cached.timeSeries) &&
@@ -186,10 +193,7 @@ async function createWidget() {
       fetchTimeStr = cached.fetchTimeStr || "Unknown";
       if (cached.url) widget.url = cached.url;
     } else {
-      const errText = widget.addText("Failed to load SMHI data");
-      errText.textColor = Color.red();
-      errText.font = Font.boldSystemFont(12);
-      return widget;
+      return showError(widget, "Failed to load SMHI data");
     }
   }
 
@@ -216,17 +220,13 @@ async function createWidget() {
   timeText.textColor = subtitleColor();
 
   titleStack.addSpacer(titleRightInset);
-
   widget.addSpacer(4);
 
   // 4. FORECAST TEXT ROWS (NATIVE WIDGET STACK)
   const forecasts = getUpcomingHours(timeSeries, 16);
 
   if (forecasts.length === 0) {
-    const errText = widget.addText("No upcoming forecast data");
-    errText.textColor = Color.orange();
-    errText.font = Font.boldSystemFont(12);
-    return widget;
+    return showError(widget, "No upcoming forecast data", Color.orange());
   }
 
   const colWidthPt =
@@ -447,12 +447,13 @@ function createWeatherChart(forecasts, width, height, lat, lon) {
     const pop = getValue(item, "probability_of_precipitation", "pop") || 0;
     const centerX = leftAxisWidth + i * colWidth + colWidth / 2;
     const y = height - chartBottomPad - (pop / 100) * chartHeight;
-    points.push(new Point(centerX, y));
+    const pt = new Point(centerX, y);
 
+    points.push(pt);
     if (i === 0) {
-      curvePath.move(new Point(centerX, y));
+      curvePath.move(pt);
     } else {
-      curvePath.addLine(new Point(centerX, y));
+      curvePath.addLine(pt);
     }
   }
 
@@ -463,16 +464,16 @@ function createWeatherChart(forecasts, width, height, lat, lon) {
   ctx.strokePath();
 
   // Draw dot markers at each hour point on the curve
+  const dotRadius = 4.0;
+  ctx.setFillColor(new Color("#FF9500"));
   for (let i = 0; i < points.length; i++) {
     const pt = points[i];
-    const dotRadius = 4.0;
     const dotRect = new Rect(
       pt.x - dotRadius,
       pt.y - dotRadius,
       dotRadius * 2,
       dotRadius * 2,
     );
-    ctx.setFillColor(new Color("#FF9500"));
     ctx.fillEllipse(dotRect);
   }
 
@@ -482,12 +483,11 @@ function createWeatherChart(forecasts, width, height, lat, lon) {
 // ==========================================
 // HELPERS & FORMATTERS
 // ==========================================
-
-function drawCenteredText(ctx, text, x, y, w, h, font, color) {
-  ctx.setFont(font);
-  ctx.setTextColor(color);
-  ctx.setTextAlignedCenter();
-  ctx.drawTextInRect(String(text), new Rect(x, y, w, h));
+function showError(widget, message, color = Color.red()) {
+  const errText = widget.addText(message);
+  errText.textColor = color;
+  errText.font = Font.boldSystemFont(12);
+  return widget;
 }
 
 function drawSideText(ctx, text, x, y, w, h, font, color, align) {
@@ -508,17 +508,11 @@ function getWindArrow(directionFromDeg) {
   return arrows[index];
 }
 
-function defaultColor(forCanvas = false) {
-  if (forCanvas) {
-    return new Color("#1C1C1E");
-  }
+function defaultColor() {
   return Color.dynamic(new Color("#1C1C1E"), new Color("#FFFFFF"));
 }
 
-function subtitleColor(forCanvas = false) {
-  if (forCanvas) {
-    return new Color("#6C6C70");
-  }
+function subtitleColor() {
   return Color.dynamic(new Color("#6C6C70"), new Color("#98989D"));
 }
 
@@ -561,10 +555,9 @@ function getUpcomingHours(timeSeries, count) {
 }
 
 async function geocodeCity(city) {
-  let url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en&format=json`;
-
-  let req = new Request(url);
-  let data = await req.loadJSON();
+  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en&format=json`;
+  const req = new Request(url);
+  const data = await req.loadJSON();
 
   if (!data.results || data.results.length === 0) {
     throw new Error("City not found");
@@ -581,7 +574,7 @@ async function getGPSLocation() {
   Location.setAccuracyToThreeKilometers();
   const loc = await Location.current();
 
-  let result = {
+  const result = {
     latitude: loc.latitude,
     longitude: loc.longitude,
     name: "Unknown",
@@ -605,7 +598,6 @@ async function getGPSLocation() {
 // ==========================================
 // ASTRONOMY & DAY/NIGHT CALCULATOR
 // ==========================================
-
 function isNight(date, lat, lon) {
   const startOfYear = new Date(Date.UTC(date.getUTCFullYear(), 0, 0));
   const diff = date - startOfYear;
@@ -635,35 +627,5 @@ function getWeatherEmoji(code, night) {
     if (code === 3 || code === 4 || code === 5) return "☁️";
     if (code === 8 || code === 9 || code === 10) return "🌧️";
   }
-
-  const map = {
-    1: "☀️", // Clear sky
-    2: "🌤️", // Nearly clear sky
-    3: "⛅", // Variable cloudiness
-    4: "⛅", // Halfclear sky
-    5: "🌥️", // Cloudy sky
-    6: "☁️", // Overcast
-    7: "🌫️", // Fog
-    8: "🌦️", // Light rain showers
-    9: "🌦️", // Moderate rain showers
-    10: "🌦️", // Heavy rain showers
-    11: "⛈️", // Thunderstorm
-    12: "🌨️", // Light sleet showers
-    13: "🌨️", // Moderate sleet showers
-    14: "🌨️", // Heavy sleet showers
-    15: "🌨️", // Light snow showers
-    16: "🌨️", // Moderate snow showers
-    17: "🌨️", // Heavy snow showers
-    18: "🌧️", // Light rain
-    19: "🌧️", // Moderate rain
-    20: "🌧️", // Heavy rain
-    21: "🌩️", // Thunder
-    22: "🌨️", // Light sleet
-    23: "🌨️", // Moderate sleet
-    24: "🌨️", // Heavy sleet
-    25: "🌨️", // Light snowfall
-    26: "🌨️", // Moderate snowfall
-    27: "🌨️", // Heavy snowfall
-  };
-  return map[code] || "🌤️";
+  return WEATHER_EMOJI_MAP[code] || "🌤️";
 }
