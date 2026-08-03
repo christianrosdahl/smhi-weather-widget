@@ -1,4 +1,10 @@
 // ==========================================
+// USER SETTINGS
+// ==========================================
+const SKIP_NIGHT_WEATHER = true; // Set to true to skip weather during sleeping hours
+const NIGHT_INTERVAL = [23, 7]; // [startHour, endHour] interval to hide (e.g., 23:00 to 07:00)
+
+// ==========================================
 // SHARED CHART DIMENSIONS & PROPORTIONS
 // ==========================================
 const CHART_WIDTH = 1072;
@@ -586,6 +592,16 @@ function getValue(item, key1, key2) {
   return 0;
 }
 
+function isInNightInterval(date, [startHour, endHour]) {
+  const h = date.getHours();
+  if (startHour > endHour) {
+    return h >= startHour || h < endHour;
+  } else if (startHour < endHour) {
+    return h >= startHour && h < endHour;
+  }
+  return h === startHour;
+}
+
 function getUpcomingHours(timeSeries, count) {
   const now = new Date();
   const currentHourTime = new Date(
@@ -595,10 +611,19 @@ function getUpcomingHours(timeSeries, count) {
     now.getHours(),
   ).getTime();
 
-  const futureOrCurrent = timeSeries.filter((item) => {
+  let futureOrCurrent = timeSeries.filter((item) => {
     const itemTime = new Date(item.time || item.validTime).getTime();
     return itemTime >= currentHourTime;
   });
+
+  if (SKIP_NIGHT_WEATHER && futureOrCurrent.length > 0) {
+    const firstItem = futureOrCurrent[0];
+    const remainingItems = futureOrCurrent.slice(1).filter((item) => {
+      const itemTime = new Date(item.time || item.validTime);
+      return !isInNightInterval(itemTime, NIGHT_INTERVAL);
+    });
+    futureOrCurrent = [firstItem, ...remainingItems];
+  }
 
   return futureOrCurrent.slice(0, count);
 }

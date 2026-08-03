@@ -12,6 +12,7 @@ An iPhone medium-sized widget for [Scriptable](https://scriptable.app) that disp
 - **SMHI Open Data API:** Highly accurate forecasts for Sweden and the surrounding northern European region (see image below).
 - **16-Hour Default Breakdown:** View hourly temperature, wind speed, wind direction, and weather symbols at a glance for the upcoming 16 hours.
 - **Dynamic 32-Hour Horizon (Bonus Info):** When the probability of precipitation across all 16 initial hours is 0%, the precipitation diagram is omitted to make better use of screen space. In its place, a second 16-hour row is displayed, extending your forecast outlook to a full 32 hours.
+- **Night-Time Filtering:** Optionally hide weather during sleeping hours (e.g., between 23:00 and 07:00) so your forecast focuses on daytime hours. The first column will always show the current/next available hour so you know the immediate weather, and subsequent hours during the night interval are filtered away to show more upcoming daytime data. See **Night-Time Weather Filtering** below.
 - **Precipitation & Probability Chart:** Shown by default whenever precipitation is possible during the initial 16-hour window. Combined visual chart displaying:
   - **Orange Curve:** Probability of precipitation (`%`).
   - **Blue Bars:** Min/Max expected precipitation (`mm`).
@@ -58,12 +59,26 @@ An iPhone medium-sized widget for [Scriptable](https://scriptable.app) that disp
 
 ## ⚙️ Configuration & Parameter Mode
 
+### Location Parameters
+
 You can control how the widget resolves its location without modifying the script:
 
 | Mode                   | Parameter Value | Behavior                                                                 |
 | :--------------------- | :-------------- | :----------------------------------------------------------------------- |
 | **GPS Mode (Default)** | _(Leave Blank)_ | Uses your device GPS and reverse-geocodes your current town/city.        |
 | **Fixed City Mode**    | `Stockholm`     | Uses Open-Meteo geocoding to look up coordinates for the specified city. |
+
+### Night-Time Weather Filtering
+
+At the very top of `smhi-weather-widget.js`, you can configure whether to skip weather during sleeping hours to display more daytime hours:
+
+```javascript
+// ==========================================
+// USER SETTINGS
+// ==========================================
+const SKIP_NIGHT_WEATHER = true; // Set to true to skip weather during sleeping hours
+const NIGHT_INTERVAL = [23, 7]; // [startHour, endHour] interval to hide (e.g., 23:00 to 07:00)
+```
 
 ## 🛠️ Troubleshooting
 
