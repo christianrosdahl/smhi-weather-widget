@@ -462,11 +462,22 @@ function createWeatherChart(forecasts, width, height, lat, lon) {
     const item = forecasts[i];
     const pmin = getValue(item, "precipitation_amount_min", "pmin") || 0;
     const pmax = getValue(item, "precipitation_amount_max", "pmax") || 0;
+    const pop = getValue(item, "probability_of_precipitation", "pop") || 0;
 
     const centerX = leftAxisWidth + i * colWidth + colWidth / 2;
     const barX = centerX - barWidth / 2;
 
-    // Outer light-blue bar: Maximum precipitation
+    const isLowProb = pop < 50;
+
+    const maxBarColor = isLowProb
+      ? new Color("#38BDF8", 0.15)
+      : new Color("#38BDF8", 0.5);
+
+    const minBarColor = isLowProb
+      ? new Color("#007AFF", 0.25)
+      : new Color("#007AFF", 0.85);
+
+    // Outer bar: Maximum precipitation
     if (pmax > 0) {
       const maxBarHeight = Math.max(3, (pmax / maxRain) * chartHeight);
       const maxRect = new Rect(
@@ -475,11 +486,11 @@ function createWeatherChart(forecasts, width, height, lat, lon) {
         barWidth,
         maxBarHeight,
       );
-      ctx.setFillColor(new Color("#64D2FF", 0.45));
+      ctx.setFillColor(maxBarColor);
       ctx.fillRect(maxRect);
     }
 
-    // Inner solid-blue bar: Minimum precipitation
+    // Inner bar: Minimum precipitation
     if (pmin > 0) {
       const minBarHeight = Math.max(3, (pmin / maxRain) * chartHeight);
       const minRect = new Rect(
@@ -488,7 +499,7 @@ function createWeatherChart(forecasts, width, height, lat, lon) {
         barWidth,
         minBarHeight,
       );
-      ctx.setFillColor(new Color("#007AFF", 0.85));
+      ctx.setFillColor(minBarColor);
       ctx.fillRect(minRect);
     }
   }
