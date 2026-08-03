@@ -22,7 +22,7 @@ An iPhone medium-sized widget for [Scriptable](https://scriptable.app) that disp
 - **Interactive:** Tap the widget to open the full SMHI weather forecast in your browser.
 
 <figure align="center">
-  <img src="assets/forecast_coverage.png" alt="SMHI forecast coverage area" width="420" />
+  <img src="assets/forecast-coverage.png" alt="SMHI forecast coverage area" width="420" />
   <figcaption><i>Approximate area for which forecasts from SMHI are available.</i></figcaption>
 </figure>
 
