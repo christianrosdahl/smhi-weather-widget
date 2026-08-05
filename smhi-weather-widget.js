@@ -455,6 +455,24 @@ function createWeatherChart(forecasts, width, height, lat, lon) {
     );
   });
 
+  // 1b. Draw vertical day-boundary lines
+  const dayLineColor = new Color("#8E8E93", 0.45);
+  for (let i = 1; i < forecasts.length; i++) {
+    const prevDate = new Date(forecasts[i - 1].time);
+    const currDate = new Date(forecasts[i].time);
+
+    if (currDate.getDate() !== prevDate.getDate()) {
+      const x = leftAxisWidth + i * colWidth;
+      const path = new Path();
+      path.move(new Point(x, chartTopPad));
+      path.addLine(new Point(x, height - chartBottomPad));
+      ctx.addPath(path);
+      ctx.setStrokeColor(dayLineColor);
+      ctx.setLineWidth(1);
+      ctx.strokePath();
+    }
+  }
+
   const barWidth = Math.floor(colWidth * 0.8);
 
   // 2. Bottom Layer: Min & Max Precipitation Bars
