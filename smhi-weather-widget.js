@@ -488,11 +488,11 @@ function createWeatherChart(forecasts, width, height, lat, lon) {
     const isLowProb = pop < 50;
 
     const maxBarColor = isLowProb
-      ? new Color("#38BDF8", 0.15)
+      ? new Color("#bbbbc3", 0.2)
       : new Color("#38BDF8", 0.5);
 
     const minBarColor = isLowProb
-      ? new Color("#007AFF", 0.25)
+      ? new Color("#bbbbc3", 0.25)
       : new Color("#007AFF", 0.85);
 
     // Outer bar: Maximum precipitation
